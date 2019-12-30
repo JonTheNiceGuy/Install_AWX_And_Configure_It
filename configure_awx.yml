@@ -48,7 +48,6 @@
     loop_control:
       label: "{{ item.key }}"
     loop: "{{ organizations | default({}) | dict2items }}"
-    when: item.value.teams is defined
 
   - name: Create AWX Teams
     tower_team:
