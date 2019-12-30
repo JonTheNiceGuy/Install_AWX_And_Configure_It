@@ -14,6 +14,12 @@ git clone https://github.com/JonTheNiceGuy/Install_AWX_And_Configure_It /tmp/bui
 cd /tmp/build_playbook
 echo "${data.local_file.secrets.content}" > secrets.yml
 echo "${data.local_file.config.content}" > run.json
+
+# Alternatively, use something like this:
+# git clone https://gist.github.com/JonTheNiceGuy/a057a8f19bb3cb1df839cda6d16f6b0d /tmp/awx_config
+# ln -s /tmp/awx_config/secrets.yml secrets.yml
+# ln -s /tmp/awx_config/run.json run.json
+
 mkdir /root/awx_build
 echo "#!/bin/bash" > /root/awx_build/creds
 echo "export AWX_Hostname=$(hostname)" >> /root/awx_build/creds
