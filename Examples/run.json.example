@@ -1,0 +1,101 @@
+{
+  "ansible_fqdn":"$AWX_Hostname",
+  "admin_password":"$AWX_Password",
+  "users": {
+    "SomeUser": {
+      "description": "SomeUser"
+    }
+  },
+  "organizations": {
+    "SomeOrg": {
+      "description": "A collection of things for AWX",
+      "teams": {
+        "YourTeam": {
+          "role": "execute",
+          "members": [
+            "SomeUser"
+          ]
+        }
+      },
+      "credentials": {
+        "AWS": {
+          "username": "$AWS_TOKEN",
+          "password": "$AWS_SECRET",
+          "kind": "aws"
+        },
+        "Azure": {
+          "kind": "azure_rm",
+          "client": "$AZURE_CLIENT_ID",
+          "secret": "$AZURE_SECRET",
+          "subscription": "$AZURE_SUBSCRIPTION_ID",
+          "tenant": "$AZURE_TENANT"
+        },
+        "Default": {
+          "username": "ec2",
+          "ssh_key_data": "$SSH_KEY"
+        },
+        "Vault": {
+          "kind": "vault",
+          "vault_password": "$VAULT"
+        }
+      },
+      "projects": {
+        "YourGitRepo": {
+          "scm_url": "https://git.example.com/somerepo.git",
+          "scm_clean": "yes",
+          "scm_update_on_launch": "yes"
+        }
+      },
+      "inventory": {
+        "YourInventory": {
+          "source": {
+            "EC2 Source": {
+              "credential": "AWS",
+              "update_on_launch": "true",
+              "update_cache_timeout": "10",
+              "type": "ec2",
+              "source_vars": {
+                "hostname_variable": "tag_Name",
+                "group_by_instance_id": "False",
+                "group_by_region": "False",
+                "group_by_availability_zone":"False",
+                "group_by_aws_account": "False",
+                "group_by_ami_id":"False",
+                "group_by_instance_type":"False",
+                "group_by_instance_state": "False",
+                "group_by_platform":"False",
+                "group_by_key_pair":"False",
+                "group_by_vpc_id":"False",
+                "group_by_security_group":"True",
+                "group_by_tag_keys":"True",
+                "group_by_tag_none":"False",
+                "group_by_route53_names":"False",
+                "group_by_rds_engine":"False",
+                "group_by_rds_parameter_group":"False",
+                "group_by_elasticache_engine":"False",
+                "group_by_elasticache_cluster":"False",
+                "group_by_elasticache_parameter_group":"False",
+                "group_by_elasticache_replication_group":"False"
+              }
+            },
+            "Azure Source": {
+              "credential": "Azure",
+              "update_on_launch": "true",
+              "update_cache_timeout": "10",
+              "type": "azure_rm"
+            }
+          }
+        }
+      },
+      "job_templates": {
+        "Run YourGitRepo against YourInventory": {
+          "project": "YourGitRepo",
+          "playbook": "site.yml",
+          "credential": "Default",
+          "vault_credential": "Vault",
+          "inventory": "YourInventory"
+        }
+      }
+    }
+  }
+}

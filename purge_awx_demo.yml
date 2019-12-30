@@ -1,0 +1,43 @@
+---
+- hosts: localhost
+  gather_facts: false
+  tasks:
+  - name: Purge the Demo AWX Job Template
+    tower_job_template:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      job_type: run
+      name: "Demo Job Template"
+      project: "Demo Project"
+      playbook: "demo.yml"
+      state: absent
+    failed_when: false
+      
+  - name: Purge the Demo AWX Project
+    tower_project:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      name: "Demo Project"
+      state: absent
+    failed_when: false
+
+  - name: Purge the Demo AWX inventory
+    tower_inventory:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      name: "Demo Inventory"
+      organization: "Default"
+      state: absent
+
+  - name: Purge the Demo AWX Credentials
+    tower_credential:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      kind: ssh
+      name: "Demo Credential"
+      organization: null
+      state: absent

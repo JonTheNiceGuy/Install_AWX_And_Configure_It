@@ -1,0 +1,74 @@
+---
+- hosts: localhost
+  tasks:
+  - name: Install the Docker GPG Key
+    apt_key:
+      url: https://download.docker.com/linux/ubuntu/gpg
+      id: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+
+  - name: Install the Docker repo
+    apt_repository:
+      repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+      state: present
+      filename: docker-ce
+
+  - name: Install required software via Apt
+    apt:
+      update_cache: yes
+      name: ['docker-ce', 'docker-ce-cli', 'containerd.io', 'nodejs', 'npm', 'certbot']
+      force_apt_get: yes
+
+  - name: Install npm packages
+    npm:
+      name: npm
+      global: yes
+      state: latest
+  
+  # Based on
+  # https://community.letsencrypt.org/t/certbot-pem-automatic-creation-create-pem-file-that-contains-both-privkey-pem-and-fullchain-pem-in-one/60881/2
+  - name: Create merge_cert.sh
+    copy:
+      dest: /etc/letsencrypt/merge_cert.sh
+      content: |
+        #!/bin/sh
+        cat {{ '$' }}{RENEWED_LINEAGE}/privkey.pem {{ '$' }}{RENEWED_LINEAGE}/fullchain.pem > {{ '$' }}{RENEWED_LINEAGE}/merged.pem
+        chmod 640 {{ '$' }}{RENEWED_LINEAGE}/merged.pem
+      mode: "0750"
+      owner: root
+      group: root
+
+  - name: Get certbot certificate
+    command: "certbot certonly --standalone --deploy-hook /etc/letsencrypt/merge_cert.sh -n -d {{ ansible_fqdn }} --register-unsafely-without-email --agree-tos"
+    args:
+      creates: "/etc/letsencrypt/live/{{ ansible_fqdn }}/merged.pem"
+
+  - name: Clone AWX repo
+    git:
+      repo: https://github.com/ansible/awx.git
+      dest: /opt/awx
+    failed_when: false
+
+  - name: Configure AWX installer
+    lineinfile:
+      path: /opt/awx/installer/inventory
+      regexp: "^#?{{ item.key }}="
+      line: "{{ item.key }}={{ item.value }}"
+    loop:
+    - key: "awx_web_hostname"
+      value: "{{ ansible_fqdn }}"
+    - key: "pg_password"
+      value: "{{ lookup('password', 'pw.pg_password chars=ascii_letters,digits length=20') }}"
+    - key: "rabbitmq_password"
+      value: "{{ lookup('password', 'pw.rabbitmq_password chars=ascii_letters,digits length=20') }}"
+    - key: "rabbitmq_erlang_cookie"
+      value: "{{ lookup('password', 'pw.rabbitmq_erlang_cookie chars=ascii_letters,digits length=20') }}"
+    - key: "admin_password"
+      value: "{{ admin_password }}"
+    - key: "ssl_certificate"
+      value: "/etc/letsencrypt/live/{{ ansible_fqdn }}/merged.pem"
+    - key: "secret_key"
+      value: "{{ lookup('password', 'pw.secret_key chars=ascii_letters,digits length=64') }}"
+    - key: "create_preload_data"
+      value: "False"
+    loop_control:
+      label: "{{ item.key }}"

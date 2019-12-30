@@ -1,0 +1,359 @@
+---
+- hosts: localhost
+  gather_facts: false
+  tasks:
+  - name: Test access to AWX
+    tower_user:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      email: "admin@{{ ansible_fqdn }}"
+      first_name: "admin"
+      last_name: ""
+      password: "{{ admin_password }}"
+      username: admin
+      superuser: yes
+      auditor: no
+    register: _result
+    until: _result.failed == false
+    retries: 240 # retry X times
+    delay: 5 # pause for X sec b/w each call
+
+  - name: Create AWX Users
+    tower_user:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      auditor: "{% if (not item.value.admin | default(false)) and item.value.auditor | default(false) %}yes{% else %}no{% endif %}"
+      email: "{{ item.value.email | default(item.key | lower + '@' + ansible_fqdn) }}"
+      first_name: "{{ item.value.first_name | default('') }}"
+      last_name: "{{ item.value.last_name | default('') }}"
+      password: "{{ item.value.password | default(admin_password) }}"
+      superuser: "{% if item.value.admin | default(false) %}yes{% else %}no{% endif %}"
+      username: "{{ item.key }}"
+      state: present
+    changed_when: false
+    loop_control:
+      label: "{{ item.key }}"
+    loop: "{{ users | default({}) | dict2items }}"
+
+  - name: Create AWX organizations
+    tower_organization:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      description: "{{ item.value.description | default('An organization') }}"
+      name: "{{ item.key }}"
+      state: present
+    loop_control:
+      label: "{{ item.key }}"
+    loop: "{{ organizations | default({}) | dict2items }}"
+    when: item.value.teams is defined
+
+  - name: Create AWX Teams
+    tower_team:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      name: "{{ item.key }}"
+      description: "{{ item.value.description | default(omit) }}"
+      organization: "{{ item.value.organization }}"
+      state: present
+    loop_control:
+      label: "{{ item.key }}"
+    loop: |
+      [
+        {% for org in organizations | dict2items %}
+          {% set myorg = {'organization': org.key } %}
+          {% for team in org.value.teams | default({}) | dict2items %}
+            {
+              'key': '{{ team.key }}',
+              'value': {{ myorg | combine(team.value | default({}) )}}
+            },
+          {% endfor %}
+        {% endfor %}
+      ]
+
+  - name: Add members to the teams
+    tower_role:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      user: "{{ item.key }}"
+      target_team: "{{ item.value.team }}"
+      role: "{{ item.value.role }}"
+      state: present
+    loop_control:
+      label: "{{ item.key }}"
+    loop: |
+      [
+        {% for org in organizations | dict2items %}
+          {% for team in org.value.teams | default({}) | dict2items %}
+            {% set myteam = {'team': team.key, 'role': 'member' } %}
+            {% for member in team.value.members | default([]) %}
+              {% if member == 'admin' or users[member] is defined %}
+                {
+                  'key': '{{ member }}',
+                  'value': {{ myteam }}
+                },
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        {% endfor %}
+      ]
+
+  - name: Add Team Permissions to the organization
+    tower_role:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      organization: "{{ item.value.organization }}"
+      team: "{{ item.key }}"
+      role: "{{ item.value.role }}"
+      state: present
+    loop_control:
+      label: "{{ item.key }}"
+    loop: |
+      [
+        {% for org in organizations | dict2items %}
+          {% set myorg = {'organization': org.key } %}
+          {% for team in org.value.teams | default({}) | dict2items %}
+            {
+              'key': '{{ team.key }}',
+              'value': {{ myorg | combine({'role': team.value.role | default('read') }) }}
+            },
+          {% endfor %}
+        {% endfor %}
+      ]
+
+  - name: Create AWX Credentials
+    tower_credential:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      authorize: "{{ item.value.authorize | default(omit) }}"
+      authorize_password: "{{ item.value.authorize_password | default(omit) }}"
+      become_method: "{{ item.value.become_method | default(omit) }}"
+      become_password: "{{ item.value.become_password | default(omit) }}"
+      become_username: "{{ item.value.become_username | default(omit) }}"
+      client: "{{ item.value.client | default(omit) }}"
+      description: "{{ item.value.description | default(omit) }}"
+      domain: "{{ item.value.domain | default(omit) }}"
+      host: "{{ item.value.host | default(omit) }}"
+      kind: "{{ item.value.kind | default('ssh') }}"
+      name: "{{ item.key }}"
+      organization: "{{ item.value.organization }}"
+      password: "{{ item.value.password | default(omit) }}"
+      secret: "{{ item.value.secret | default(omit) }}"
+      security_token: "{{ item.value.security_token | default(omit) }}"
+      ssh_key_data: "{% if item.value.ssh_key_data is defined %}{{ item.value.ssh_key_data | b64decode }}{% else %}{{ omit }}{% endif %}"
+      ssh_key_unlock: "{{ item.value.ssh_key_unlock | default(omit) }}"
+      subscription: "{{ item.value.subscription | default(omit) }}"
+      tenant: "{{ item.value.tenant | default(omit) }}"
+      username: "{{ item.value.username | default(omit) }}"
+      vault_id: "{{ item.value.vault_id | default(omit) }}"
+      vault_password: "{{ item.value.vault_password | default(omit) }}"
+    changed_when: false
+    loop_control:
+      label: "{{ item.key }}"
+    loop: |
+      [
+        {% for org in organizations | dict2items %}
+          {% set myorg = {'organization': org.key } %}
+          {% for credential in org.value.credentials | default({}) | dict2items %}
+            {
+              'key': '{{ credential.key }}',
+              'value': {{ myorg | combine(credential.value | default({}) )}}
+            },
+          {% endfor %}
+        {% endfor %}
+      ]
+
+  - name: Add tower inventory
+    tower_inventory:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      name: "{{ item.key }}"
+      description: "{{ item.value.description | default('') }}"
+      organization: "{{ item.value.organization }}"
+      variables: |
+        {
+          {% if item.value.username | default('') != '' %}
+            "ansible_username": "{{ item.value.username }}",
+          {% endif %}
+          {% for extra in item.value.extra_vars | default({}) | dict2items %}
+            {% if extra.value | default("") is regex("^\s*[\{]") or extra.value | default("") is regex ("^\s*[\[]") %}
+              "{{ extra.key }}": {{ extra.value }},
+            {% else %}
+              "{{ extra.key }}": "{{ extra.value }}",
+            {% endif %}
+          {% endfor %}
+        }
+      state: present
+    loop_control:
+      label: "{{ item.key }}"
+    loop: |
+      [
+        {% for org in organizations | dict2items %}
+          {% set myorg = {'organization': org.key } %}
+          {% for inventory in org.value.inventory | default({}) | dict2items %}
+            {
+              'key': '{{ inventory.key }}',
+              'value': {{ myorg | combine(inventory.value | default({}) )}}
+            },
+          {% endfor %}
+        {% endfor %}
+      ]
+
+  - name: Add tower inventory source
+    tower_inventory_source:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      credential: "{{ item.value.credential | default(omit) }}"
+      description: "{{ item.value.description | default(omit) }}"
+      group_by: "{{ item.value.group_by | default(omit) }}"
+      instance_filters: "{{ item.value.instance_filters | default(omit) }}"
+      inventory: "{{ item.value.inventory }}"
+      name: "{{ item.value.name | default(item.key) }}"
+      overwrite: "{{ item.value.overwrite | default(omit) }}"
+      overwrite_vars: "{{ item.value.overwrite_vars | default(omit) }}"
+      source: "{{ item.value.type | default(item.key) }}"
+      source_path: "{{ item.value.source_path | default(omit) }}"
+      source_project: "{{ item.value.source_project | default(omit) }}"
+      source_regions: "{{ item.value.source_regions | default(omit) }}"
+      source_script: "{{ item.value.source_script | default(omit) }}"
+      source_vars: "{{ item.value.source_vars | default('') | string }}"
+      update_cache_timeout: "{{ item.value.update_cache_timeout | default(omit) }}"
+      update_on_launch: "{{ item.value.update_on_launch | default(omit) }}"
+      update_on_project_update: "{{ item.value.update_on_project_update | default(omit) }}"
+      state: present
+    loop_control:
+      label: "{{ item.value.inventory }} -> {{ item.value.name | default(item.key) }}"
+    loop: |
+      [
+        {% for org in organizations | dict2items %}
+          {% set myorg = {'organization': org.key } %}
+          {% for inventory in org.value.inventory | default({}) | dict2items %}
+            {% set myinventory = {'inventory': inventory.key} %}
+            {% for source in inventory.value.source | default({}) | dict2items %}
+              {
+                'key': '{{ source.key }}',
+                'value': {{ myorg | combine(myinventory | default({}) | combine(source.value | default({}) ) )}}
+              },
+            {% endfor %}
+          {% endfor %}
+        {% endfor %}
+      ]
+
+  - name: Add AWX Project (Git Repo)
+    tower_project:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      name: "{{ item.key }}"
+      scm_branch: "{{ item.value.scm_branch | default(omit) }}"
+      scm_credential: "{{ item.value.scm_credential | default(omit) }}"
+      scm_clean: "{{ item.value.scm_clean | default('no') }}"
+      scm_url: "{{ item.value.scm_url | default(omit) }}"
+      scm_delete_on_update: "{{ item.value.scm_delete_on_update | default('no') }}"
+      local_path: "{{ item.value.local_path | default(omit) }}"
+      scm_type: "{{ item.value.scm_type | default('git') }}"
+      scm_update_on_launch: "{{ item.value.scm_update_on_launch | default('no') }}"
+      organization: "{{ item.value.organization }}"
+      description: "{{ item.value.description | default(omit) }}"
+      state: present
+    loop_control:
+      label: "{{ item.key }}"
+    loop: |
+      [
+        {% for org in organizations | dict2items %}
+          {% set myorg = {'organization': org.key } %}
+          {% for project in org.value.projects | default({}) | dict2items %}
+            {
+              'key': '{{ project.key }}',
+              'value': {{ myorg | combine(project.value | default({})) }}
+            },
+          {% endfor %}
+        {% endfor %}
+      ]
+  
+  - name: Add Job Template
+    tower_job_template:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      name: "{{ item.key }}"
+      description: "{{ item.value.description | default(omit) }}"
+      job_type: run
+      project: "{{ item.value.project }}"
+      playbook: "{{ item.value.playbook }}"
+      credential: "{{ item.value.credential | default(omit) }}"
+      vault_credential: "{{ item.value.vault_credential | default(omit) }}"
+      inventory: "{{ item.value.inventory | default(omit) }}"
+      become_enabled: "{{ item.value.become_enabled | default('no') }}"
+      concurrent_jobs_enabled: "{{ item.value.concurrent_jobs_enabled | default('no') }}"
+      diff_mode_enabled: "{{ item.value.diff_mode_enabled | default('no') }}"
+      fact_caching_enabled: "{{ item.value.fact_caching_enabled | default('no') }}"
+      state: present
+    register: _result
+    until: _result.failed == false
+    retries: 240 # retry X times
+    delay: 5 # pause for X sec b/w each call
+    loop_control:
+      label: "{{ item.key }}"
+    loop: |
+      [
+        {% for org in organizations | dict2items %}
+          {% for template in org.value.job_templates | default({}) | dict2items %}
+            {
+              'key': '{{ template.key }}',
+              'value': {{ template.value }}
+            },
+          {% endfor %}
+        {% endfor %}
+      ]
+
+  - name: Add Vault Credentials to the Job Template
+    raw: |
+      awx-cli config host {{ ansible_fqdn }} && \
+      awx-cli login admin --password "{{ admin_password }}" && \
+      awx-cli job_template associate_credential --job-template "{{ item.key }}" --credential "{{ item.value.vault_credential }}"
+    when: item.value.vault_credential is defined
+    loop_control:
+      label: "{{ item.key }}"
+    loop: |
+      [
+        {% for org in organizations | dict2items %}
+          {% for template in org.value.job_templates | default({}) | dict2items %}
+            {
+              'key': '{{ template.key }}',
+              'value': {{ template.value }}
+            },
+          {% endfor %}
+        {% endfor %}
+      ]
+
+  - name: Launch Job Template
+    tower_job_launch:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      job_template: "{{ item }}"
+    register: _result
+    until: _result.failed == false
+    retries: 240 # retry X times
+    delay: 5 # pause for X sec b/w each call
+    loop_control:
+      label: "{{ item }}"
+    loop: |
+      [
+        {% for org in organizations | dict2items %}
+          {% for template in org.value.job_templates | default({}) | dict2items %}
+            {% if template.value.launch | default(true) %}
+              '{{ template.key }}',
+            {% endif %}
+          {% endfor %}
+        {% endfor %}
+      ]
