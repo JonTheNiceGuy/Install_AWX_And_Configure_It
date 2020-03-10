@@ -282,6 +282,7 @@
         {% endfor %}
       ]
 
+    # Work-around to https://github.com/ansible/awx/issues/5177
   - name: Add tower inventory group children
     raw: |
       awx-cli config host {{ ansible_fqdn }} && \
@@ -377,6 +378,7 @@
         {% endfor %}
       ]
 
+    # Work-around to https://github.com/ansible/awx/issues/5557
   - name: Add Vault Credentials to the Job Template
     raw: |
       awx-cli config host {{ ansible_fqdn }} && \
