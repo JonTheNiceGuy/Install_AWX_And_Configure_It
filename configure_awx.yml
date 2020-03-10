@@ -246,6 +246,42 @@
         {% endfor %}
       ]
 
+  - name: Add tower inventory groups
+    tower_group:
+      tower_host: "https://{{ ansible_fqdn }}"
+      tower_username: admin
+      tower_password: "{{ admin_password }}"
+      credential: "{{ item.value.credential | default(omit) }}"
+      description: "{{ item.value.description | default(omit) }}"
+      group_by: "{{ item.value.group_by | default(omit) }}"
+      instance_filters: "{{ item.value.instance_filters | default(omit) }}"
+      inventory: "{{ item.value.inventory }}"
+      name: "{{ item.value.name | default(item.key) }}"
+      overwrite: "{{ item.value.overwrite | default(omit) }}"
+      overwrite_vars: "{{ item.value.overwrite_vars | default(omit) }}"
+      source: "{{ item.value.source | default('manual') }}"
+      source_regions: "{{ item.value.source_regions | default(omit) }}"
+      source_script: "{{ item.value.source_script | default(omit) }}"
+      source_vars: "{{ item.value.source_vars | default('') | string }}"
+      state: present
+    loop_control:
+      label: "{{ item.value.inventory }} -> {{ item.value.name | default(item.key) }}"
+    loop: |
+      [
+        {% for org in organizations | dict2items %}
+          {% set myorg = {'organization': org.key } %}
+          {% for inventory in org.value.inventory | default({}) | dict2items %}
+            {% set myinventory = {'inventory': inventory.key} %}
+            {% for source in inventory.value.source | default({}) | dict2items %}
+              {
+                'key': '{{ source.key }}',
+                'value': {{ myorg | combine(myinventory | default({}) | combine(source.value | default({}) ) )}}
+              },
+            {% endfor %}
+          {% endfor %}
+        {% endfor %}
+      ]
+
   - name: Add AWX Project (Git Repo)
     tower_project:
       tower_host: "https://{{ ansible_fqdn }}"

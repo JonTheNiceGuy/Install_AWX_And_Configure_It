@@ -1,5 +1,5 @@
 #! /bin/bash
-hostnamectl set-hostname awx.${aws_eip.awx.public_ip}.nip.io
+hostnamectl set-hostname awx
 #######################################################################################
 # Install ansible dependencies
 #######################################################################################
@@ -23,11 +23,11 @@ echo "${data.local_file.config.content}" > run.json
 mkdir /root/awx_build
 echo "#!/bin/bash" > /root/awx_build/creds
 echo "export AWX_Hostname=$(hostname)" >> /root/awx_build/creds
-echo "export AWX_Password=\"${var.admin_password}\"" >> /root/awx_build/creds
-echo "echo \"${var.VaultFile}\" > /tmp/build_playbook/vaultfile" >> /root/awx_build/creds
+echo "export AWX_Password=\"SomePassword\"" >> /root/awx_build/creds
+echo "echo \"My Super Secret Vault Password Is Really Really Long Like 1000 Characters\" > /tmp/build_playbook/vaultfile" >> /root/awx_build/creds
 echo "echo \"{
   'ansible_fqdn':'$(hostname)',
-  'admin_password':'${var.admin_password}'
+  'admin_password':'SomePassword'
 }\" > /tmp/build_playbook/extra.json" >> /root/awx_build/creds
 echo '$*' >> /root/awx_build/creds
 chmod +x /root/awx_build/creds
