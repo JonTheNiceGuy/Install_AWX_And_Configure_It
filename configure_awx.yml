@@ -272,10 +272,10 @@
           {% set myorg = {'organization': org.key } %}
           {% for inventory in org.value.inventory | default({}) | dict2items %}
             {% set myinventory = {'inventory': inventory.key} %}
-            {% for source in inventory.value.source | default({}) | dict2items %}
+            {% for groups in inventory.value.groups | default({}) | dict2items %}
               {
-                'key': '{{ source.key }}',
-                'value': {{ myorg | combine(myinventory | default({}) | combine(source.value | default({}) ) )}}
+                'key': '{{ groups.key }}',
+                'value': {{ myorg | combine(myinventory | default({}) | combine(groups.value | default({}) ) )}}
               },
             {% endfor %}
           {% endfor %}
