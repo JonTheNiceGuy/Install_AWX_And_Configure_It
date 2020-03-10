@@ -177,18 +177,17 @@
       description: "{{ item.value.description | default('') }}"
       organization: "{{ item.value.organization }}"
       variables: |
-        {
-          {% if item.value.username | default('') != '' %}
-            "ansible_username": "{{ item.value.username }}",
-          {% endif %}
-          {% for extra in item.value.extra_vars | default({}) | dict2items %}
-            {% if extra.value | default("") is regex("^\s*[\{]") or extra.value | default("") is regex ("^\s*[\[]") %}
-              "{{ extra.key }}": {{ extra.value }},
-            {% else %}
-              "{{ extra.key }}": "{{ extra.value }}",
-            {% endif %}
-          {% endfor %}
-        }
+        ---
+        {% if item.value.username | default('') != '' %}
+        "ansible_username": "{{ item.value.username }}"
+        {% endif %}
+        {% for extra in item.value.extra_vars | default({}) | dict2items %}
+        {% if extra.value | default("") is regex("^\s*[\{]") or extra.value | default("") is regex ("^\s*[\[]") %}
+        "{{ extra.key }}": {{ extra.value }}
+        {% else %}
+        "{{ extra.key }}": "{{ extra.value }}"
+        {% endif %}
+        {% endfor %}
       state: present
     loop_control:
       label: "{{ item.key }}"
@@ -263,6 +262,7 @@
       source_regions: "{{ item.value.source_regions | default(omit) }}"
       source_script: "{{ item.value.source_script | default(omit) }}"
       source_vars: "{{ item.value.source_vars | default('') | string }}"
+      variables: "{{ item.value.variables | default(omit) }}"
       state: present
     loop_control:
       label: "{{ item.value.inventory }} -> {{ item.value.name | default(item.key) }}"
@@ -277,6 +277,33 @@
                 'key': '{{ groups.key }}',
                 'value': {{ myorg | combine(myinventory | default({}) | combine(groups.value | default({}) ) )}}
               },
+            {% endfor %}
+          {% endfor %}
+        {% endfor %}
+      ]
+
+  - name: Add tower inventory group children
+    raw: |
+      awx-cli config host {{ ansible_fqdn }} && \
+      awx-cli login admin --password "{{ admin_password }}" && \
+      awx-cli group create -n "{{ item.group }}" -d "imported" --parent "{{ item.parent }}" -i "{{ item.inventory }}"
+    loop_control:
+      label: "{{ item.inventory }} -> {{ item.parent }} -> {{ item.group }}"
+    loop: |
+      [
+        {% for org in organizations | dict2items %}
+          {% set myorg = {'organization': org.key } %}
+          {% for inventory in org.value.inventory | default({}) | dict2items %}
+            {% set myinventory = {'inventory': inventory.key} %}
+            {% for groups in inventory.value.groups | default({}) | dict2items %}
+              {% set myparent = {'parent': groups.key } %}
+              {% for group in groups.value.group | default([]) %}
+              {
+                'group': '{{ group }}',
+                'parent': '{{ groups.key }}',
+                'inventory': '{{ inventory.key }}'
+              },
+              {% endfor %}
             {% endfor %}
           {% endfor %}
         {% endfor %}
