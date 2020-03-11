@@ -1,0 +1,132 @@
+---
+- name: Start Proxy service and read CA Certificate
+  hosts: localhost
+  gather_facts: false
+  handlers:
+  - name: Restart proxy service
+    systemd:
+      daemon_reload: yes
+      name: mitmdump
+      state: restarted
+      enabled: yes
+
+  tasks:
+  - name: Install Python3-Pip
+    apt:
+      update_cache: yes
+      name: ['python3-pip']
+      state: present
+  
+  - name: Install MITMProxy
+    pip:
+      name: ['mitmproxy']
+      state: present
+  
+  # Based on https://discourse.mitmproxy.org/t/mitm-proxy-on-ubuntu-startup/943/2
+  - name: Create proxy systemd unit
+    copy:
+      dest: /etc/systemd/system/mitmdump.service
+      content: |
+        [Unit]
+        Description=MITMDump service
+        After=network.target
+        [Service]
+        Type=simple
+        User=root
+        ExecStart=/usr/local/bin/mitmdump --showhost --ssl-insecure --listen-port 8080
+        Restart=always
+        RestartSec=1
+        [Install]
+        WantedBy=multi-user.target
+      mode: "0644"
+      owner: root
+      group: root
+    notify: Restart proxy service
+
+  - name: Read proxy CA certificate
+    slurp:
+      src: /root/.mitmproxy/mitmproxy-ca-cert.cer
+    register: ca_proxy
+
+  - name: Add Docker Containers
+    add_host:
+      name: awx_task
+      ansible_connection: docker
+      proxycert: "{{ ca_proxy['content'] | b64decode }}"
+    changed_when: false
+
+- name: Update containers with certificate
+  hosts: awx_task
+  handlers:
+  - name: Reload RHEL Trust Anchors
+    command: /bin/update-ca-trust
+  - name: Reload Debian Trust Anchors
+    command: /bin/update-ca-certificates
+
+  tasks:
+  - copy:
+      dest: /etc/pki/ca-trust/source/anchors/mitmproxy-ca-cert.cer
+      content: "{{ proxycert }}"
+      owner: root
+      group: root
+      mode: "0644"
+    notify: Reload RHEL Trust Anchors
+    when:
+    - ansible_os_family == "RedHat"
+    - ansible_distribution_major_version|int >= 7
+
+  - copy:
+      dest: /usr/local/share/ca-certificates/mitmproxy-ca-cert.cer
+      content: "{{ proxycert }}"
+      owner: root
+      group: root
+      mode: "0644"
+    notify: Reload RHEL Trust Anchors
+    when:
+    - ansible_os_family == "RedHat"
+    - ansible_distribution_major_version|int <= 6
+
+  - copy:
+      dest: /usr/share/ca-certificates/mitmproxy-ca-cert.crt
+      content: "{{ proxycert }}"
+      owner: root
+      group: root
+      mode: "0644"
+    notify: Reload Debian Trust Anchors
+    when:
+    - ansible_os_family == "Debian"
+
+  - fail:
+      msg: "Container Family is not Debian and RedHat"
+    when:
+    - ansible_os_family != "RedHat" and ansible_os_family != "Debian"
+
+- hosts: localhost
+  gather_facts: false
+  tasks:
+  - name: Set Proxy Facts
+    set_fact:
+      proxy: "http://{{ ansible_default_ipv4.address }}:8080"
+      cert_path: |-
+        {%- if hostvars['awx_task'].ansible_os_family == 'RedHat' %}/etc/ssl/certs/ca-bundle.crt
+        {%- elif hostvars['awx_task'].ansible_os_family == 'Debian' %}/etc/ssl/certs/ca-certificates.crt
+        {%- endif -%}
+
+  - name: Set AWX Facts
+    set_fact:
+      AWX_TASK_ENV: |
+        {'HOME': '/var/lib/awx', 'REQUESTS_CA_BUNDLE': '{{ cert_path }}', 'HTTP_PROXY': '{{ proxy }}', 'HTTPS_PROXY': '{{ proxy }}', 'http_proxy': '{{ proxy }}', 'https_proxy': '{{ proxy }}'}
+
+  - name: Dump AWX Facts
+    debug:
+      msg: |
+        You haven't defined an admin password. As such, your AWX Task Environment (Settings -> Jobs -> Extra Environment Variables) value should include:
+        {{ AWX_TASK_ENV }}
+    when: admin_password is not defined
+
+  - name: Set AWX Proxy
+    command: |
+      awx-cli config host 127.0.0.1 && \
+      awx-cli login admin --password "{{ admin_password }}" && \
+      awx-cli setting modify AWX_TASK_ENV "{{ AWX_TASK_ENV }}"
+    when: admin_password is defined
