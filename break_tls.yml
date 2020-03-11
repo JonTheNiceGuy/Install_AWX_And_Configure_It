@@ -102,7 +102,6 @@
     - ansible_os_family != "RedHat" and ansible_os_family != "Debian"
 
 - hosts: localhost
-  gather_facts: false
   tasks:
   - name: Set Proxy Facts
     set_fact:
