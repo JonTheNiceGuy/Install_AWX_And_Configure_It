@@ -48,6 +48,28 @@
       dest: /opt/awx
     failed_when: false
 
+  - name: Get latest tag name
+    shell: |
+      if [ $(git status -s | wc -l) -gt 0 ]
+      then
+        git stash > /dev/null 2> /dev/null
+      fi
+      git fetch --tags && git describe --tags $(git rev-list --tags --max-count=1)
+      if [ $(git stash list | wc -l) -gt 0 ]
+      then
+        git stash pop > /dev/null 2> /dev/null
+      fi
+    args:
+      chdir: /opt/awx
+    register: latest_tag
+    changed_when: false
+
+  - name: Use latest released version
+    git:
+      repo: https://github.com/ansible/awx.git
+      dest: /opt/awx
+      version: latest_tag.stdout
+
   - name: Configure AWX installer
     lineinfile:
       path: /opt/awx/installer/inventory
