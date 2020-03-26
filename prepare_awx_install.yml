@@ -68,7 +68,7 @@
     git:
       repo: https://github.com/ansible/awx.git
       dest: /opt/awx
-      version: latest_tag.stdout
+      version: "{{ latest_tag.stdout }}"
 
   - name: Configure AWX installer
     lineinfile:
