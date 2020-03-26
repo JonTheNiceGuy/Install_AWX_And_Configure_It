@@ -43,6 +43,8 @@
       group: root
     notify: Restart proxy service
 
+  - meta: flush_handlers
+
   - name: Read proxy CA certificate
     slurp:
       src: /root/.mitmproxy/mitmproxy-ca-cert.cer
@@ -125,6 +127,7 @@
 
   - name: Set AWX Proxy
     command: |
+      awx-cli config verify_ssl false && \
       awx-cli config host 127.0.0.1 && \
       awx-cli login admin --password "{{ admin_password }}" && \
       awx-cli setting modify AWX_TASK_ENV "{{ AWX_TASK_ENV }}"
