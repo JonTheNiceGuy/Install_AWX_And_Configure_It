@@ -31,11 +31,19 @@ if [ -e secrets.yml ]
 then
   # Merge run.json and decrypted secrets.yml into a secrets.json file
   ansible-playbook make_secrets_file.yml --vault-password-file="$VAULTFILE"
+  if [ $? -gt 0 ]
+  then
+    exit $?
+  fi
 elif [ -e ../Terraform/secrets.yml ]
 then
   cp ../Terraform/secrets.yml .
   # Merge run.json and decrypted secrets.yml into a secrets.json file
   ansible-playbook make_secrets_file.yml --vault-password-file="$VAULTFILE"
+  if [ $? -gt 0 ]
+  then
+    exit $?
+  fi
   rm secrets.yml
 else
   cp run.json secrets.json
@@ -51,4 +59,8 @@ if [ -n "$DEBUG" ] ; then echo $EXTRA_VARS | jq . ; fi
 
 # Execute config changes
 ansible-playbook configure_awx.yml -e "$EXTRA_VARS"
+if [ $? -gt 0 ]
+then
+  exit $?
+fi
 rm -f secrets.json
